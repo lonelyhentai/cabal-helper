@@ -44,9 +44,6 @@ import Distribution.PackageDescription
   , BenchmarkInterface(..)
   , withLib
   )
-import Distribution.PackageDescription.Parse
-  ( readPackageDescription
-  )
 import Distribution.PackageDescription.Configuration
   ( flattenPackageDescription
   )
@@ -194,6 +191,18 @@ import Distribution.Version
   )
 import qualified Distribution.InstalledPackageInfo as Installed
 #endif
+#if CH_MIN_VERSION_Cabal(2,2,0)
+import Distribution.PackageDescription.Parsec
+  ( readGenericPackageDescription
+  )
+import Distribution.Types.GenericPackageDescription
+  (unFlagAssignment
+  )
+#else
+import Distribution.PackageDescription.Parse
+  (readPackageDescription
+  )
+#endif
 
 import Control.Applicative ((<$>))
 import Control.Arrow (first, second, (&&&))
@@ -278,7 +287,11 @@ main = do
 
   v <- maybe silent (const deafening) . lookup  "CABAL_HELPER_DEBUG" <$> getEnvironment
   lbi <- unsafeInterleaveIO $ getPersistBuildConfig distdir
+#if CH_MIN_VERSION_Cabal(2,2,0)
+  gpd <- unsafeInterleaveIO $ readGenericPackageDescription v (projdir </> cfile)
+#else
   gpd <- unsafeInterleaveIO $ readPackageDescription v (projdir </> cfile)
+#endif
   let pd = localPkgDescr lbi
   let lvd = (lbi, v, distdir)
 
@@ -314,11 +327,19 @@ main = do
 
     "config-flags":[] -> do
       return $ Just $ ChResponseFlags $ sort $
+#if CH_MIN_VERSION_Cabal(2,2,0)
+        map (first unFlagName) $ unFlagAssignment $ configConfigurationsFlags $ configFlags lbi
+#else
         map (first unFlagName) $ configConfigurationsFlags $ configFlags lbi
+#endif
 
     "non-default-config-flags":[] -> do
       let flagDefinitons = genPackageFlags gpd
+#if CH_MIN_VERSION_Cabal(2,2,0)
+          flagAssgnments = unFlagAssignment $ configConfigurationsFlags $ configFlags lbi
+#else
           flagAssgnments = configConfigurationsFlags $ configFlags lbi
+#endif
           nonDefaultFlags =
               [ (flag_name, val)
               | MkFlag {flagName=(unFlagName -> flag_name'), flagDefault=def_val} <- flagDefinitons

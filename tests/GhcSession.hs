@@ -182,6 +182,7 @@ compileModule nb ep opts = do
 unChModuleName :: ChModuleName -> String
 unChModuleName (ChModuleName  mn) = mn
 
+liftIO'CH :: IO a -> Ghc a
 #if __GLASGOW_HASKELL__ <= 706
 liftIO'CH = GhcMonad.liftIO
 #else

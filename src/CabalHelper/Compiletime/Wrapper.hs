@@ -14,6 +14,13 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 {-# LANGUAGE RecordWildCards, FlexibleContexts #-}
+{-# LANGUAGE CPP #-}
+
+#ifdef MIN_VERSION_Cabal
+#undef CH_MIN_VERSION_Cabal
+#define CH_MIN_VERSION_Cabal MIN_VERSION_Cabal
+#endif
+
 module Main where
 
 import Control.Applicative
@@ -35,7 +42,6 @@ import Prelude
 import Distribution.System (buildPlatform)
 import Distribution.Text (display)
 import Distribution.Verbosity (silent, deafening)
-import Distribution.PackageDescription.Parse (readPackageDescription)
 import Distribution.Package (packageName, packageVersion)
 
 import Paths_cabal_helper (version)
@@ -46,21 +52,27 @@ import CabalHelper.Compiletime.Types
 import CabalHelper.Shared.Common
 import CabalHelper.Shared.InterfaceTypes
 
+#if CH_MIN_VERSION_Cabal(2,2,0)
+import Distribution.PackageDescription.Parsec (readGenericPackageDescription)
+#else
+import Distribution.PackageDescription.Parse (readPackageDescription)
+#endif
+
 usage :: IO ()
 usage = do
   prog <- getProgName
   hPutStr stderr $ "Usage: " ++ prog ++ " " ++ usageMsg
  where
-   usageMsg = "\
-\( print-appcachedir\n\
-\| print-build-platform\n\
-\| [--verbose]\n\
-\  [--with-ghc=GHC_PATH]\n\
-\  [--with-ghc-pkg=GHC_PKG_PATH]\n\
-\  [--with-cabal=CABAL_PATH]\n\
-\  [--with-cabal-version=VERSION]\n\
-\  [--with-cabal-pkg-db=PKG_DB]\n\
-\  PROJ_DIR DIST_DIR ( print-exe | package-id | [CABAL_HELPER_ARGS...] ) )\n"
+   usageMsg =
+     "( print-appcachedir\n"++
+     "| print-build-platform\n"++
+     "| [--verbose]\n"++
+     "  [--with-ghc=GHC_PATH]\n"++
+     "  [--with-ghc-pkg=GHC_PKG_PATH]\n"++
+     "  [--with-cabal=CABAL_PATH]\n"++
+     "  [--with-cabal-version=VERSION]\n"++
+     "  [--with-cabal-pkg-db=PKG_DB]\n"++
+     "  PROJ_DIR DIST_DIR ( print-exe | package-id | [CABAL_HELPER_ARGS...] ) )\n"
 
 globalArgSpec :: [OptDescr (Options -> Options)]
 globalArgSpec =
@@ -134,7 +146,11 @@ main = handlePanic $ do
             | otherwise    = silent
       -- ghc-mod will catch multiple cabal files existing before we get here
       [cfile] <- filter isCabalFile <$> getDirectoryContents projdir
+#if CH_MIN_VERSION_Cabal(2,2,0)
+      gpd <- readGenericPackageDescription v (projdir </> cfile)
+#else
       gpd <- readPackageDescription v (projdir </> cfile)
+#endif
       putStrLn $ show $
         [Just $ ChResponseVersion (display (packageName gpd)) (toDataVersion $ packageVersion gpd)]
 
@@ -142,15 +158,15 @@ main = handlePanic $ do
       cfgf <- canonicalizePath (distdir </> "setup-config")
       mhdr <- getCabalConfigHeader cfgf
       case mhdr of
-        Nothing -> panic $ printf "\
-\Could not read Cabal's persistent setup configuration header\n\
-\- Check first line of: %s\n\
-\- Maybe try: $ cabal configure" cfgf
+        Nothing -> panic $ printf
+         ("Could not read Cabal's persistent setup configuration header\n"++
+          "- Check first line of: %s\n"++
+          "- Maybe try: $ cabal configure") cfgf
         Just (hdrCabalVersion, _) -> do
           case oCabalVersion opts of
-            Just ver | hdrCabalVersion /= ver -> panic $ printf "\
-\Cabal version %s was requested but setup configuration was\n\
-\written by version %s" (showVersion ver) (showVersion hdrCabalVersion)
+            Just ver | hdrCabalVersion /= ver -> panic $ printf
+              ("Cabal version %s was requested but setup configuration was\n"++
+               "written by version %s") (showVersion ver) (showVersion hdrCabalVersion)
             _ -> do
               eexe <- compileHelper opts hdrCabalVersion projdir distdir
               case eexe of
