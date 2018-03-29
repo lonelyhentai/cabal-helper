@@ -30,17 +30,32 @@ main :: IO ()
 main = do
   args <- getArgs
   topdir <- getCurrentDirectory
-  res <- mapM (setup topdir test) $ case args of
-    [] -> [ ("tests/exelib"   , parseVer "1.10")
-          , ("tests/exeintlib", parseVer "2.0")
-          , ("tests/fliblib"  , parseVer "2.0")
-          , ("tests/bkpregex" , parseVer "2.0")
-          ]
-    xs -> map (,parseVer "0") xs
+  -- res <- mapM (setup topdir test) $ case args of
+  --   [] -> [ ("tests/exelib"   , parseVer "1.10")
+  --         , ("tests/exeintlib", parseVer "2.0")
+  --         , ("tests/fliblib"  , parseVer "2.0")
+  --         , ("tests/bkpregex" , parseVer "2.0")
+  --         ]
+  --   xs -> map (,parseVer "0") xs
+  let
+    testCases = case args of
+      [] -> [ ("tests/exelib"   , parseVer "1.10")
+            , ("tests/exeintlib", parseVer "2.0")
+            , ("tests/fliblib"  , parseVer "2.0")
+            , ("tests/bkpregex" , parseVer "2.0")
+            ]
+      xs -> map (,parseVer "0") xs
 
-  if any (==False) $ concat res
+  -- resOld <- mapM (setup CabalOldBuild topdir test) testCases
+  let resOld = []
+  resNew <- mapM (setup CabalNewBuild topdir test) testCases
+
+  if any (==False) $ concat (resOld ++ resNew)
     then exitFailure
     else exitSuccess
+
+data CabalBuild = CabalOldBuild | CabalNewBuild
+                deriving (Eq,Show)
 
 cabalInstallVersion :: IO Version
 cabalInstallVersion =
@@ -51,8 +66,9 @@ cabalInstallBuiltinCabalVersion =
     parseVer . trim <$> readProcess "cabal"
         ["act-as-setup", "--", "--numeric-version"] ""
 
-setup :: FilePath -> (FilePath -> IO [Bool]) -> (FilePath, Version) -> IO [Bool]
-setup topdir act (srcdir, min_cabal_ver) = do
+setup :: CabalBuild -> FilePath
+      -> (CabalBuild -> FilePath -> IO [Bool]) -> (FilePath, Version) -> IO [Bool]
+setup cb topdir act (srcdir, min_cabal_ver) = do
     ci_ver <- cabalInstallVersion
     c_ver <- cabalInstallBuiltinCabalVersion
     let mreason
@@ -75,9 +91,11 @@ setup topdir act (srcdir, min_cabal_ver) = do
           run "cabal" [ "sdist", "--output-dir", dir ]
 
           setCurrentDirectory dir
-          run "cabal" [ "configure" ]
+          case cb of
+            CabalOldBuild -> run "cabal" [ "configure" ]
+            CabalNewBuild -> run "cabal" [ "new-configure" ]
 
-          act dir
+          act cb dir
 
 run :: String -> [String] -> IO ()
 run x xs = do
@@ -86,16 +104,20 @@ run x xs = do
   putStrLn o
   return ()
 
-test :: FilePath -> IO [Bool]
-test dir = do
-    let qe = mkQueryEnv dir (dir </> "dist")
+test :: CabalBuild -> FilePath -> IO [Bool]
+test cb dir = do
+    let qe = case cb of
+          CabalOldBuild -> mkQueryEnv dir (dir </> "dist")
+          CabalNewBuild -> mkQueryEnv dir (dir </> "dist-newstyle")
     cs <- runQuery qe $ components $ (,,,) <$> entrypoints <.> ghcOptions <.> needsBuildOutput
     forM cs $ \(ep, opts, nb, cn) -> do
 
         putStrLn $ "\n" ++ show cn ++ ":::: " ++ show nb
 
         when (nb == ProduceBuildOutput) $ do
-          run "cabal" [ "build" ]
+          case cb of
+            CabalOldBuild -> run "cabal" [ "build" ]
+            CabalNewBuild -> run "cabal" [ "new-build" ]
 
         let opts' = "-Werror" : opts
 

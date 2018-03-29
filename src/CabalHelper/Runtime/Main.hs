@@ -198,6 +198,7 @@ import Distribution.PackageDescription.Parsec
 import Distribution.Types.GenericPackageDescription
   (unFlagAssignment
   )
+import Cabal.Plan
 #else
 import Distribution.PackageDescription.Parse
   (readPackageDescription
@@ -272,6 +273,7 @@ commands = [ "print-lbi"
 
 main :: IO ()
 main = do
+  logm $ "\n\n---------------Starting---------------------\n\n"
   args <- getArgs
 
   projdir:distdir:args' <- case args of
@@ -287,6 +289,7 @@ main = do
 
   v <- maybe silent (const deafening) . lookup  "CABAL_HELPER_DEBUG" <$> getEnvironment
   lbi <- unsafeInterleaveIO $ getPersistBuildConfig distdir
+  logm $ "\n\ngot lbi:" ++ show lbi
 #if CH_MIN_VERSION_Cabal(2,2,0)
   gpd <- unsafeInterleaveIO $ readGenericPackageDescription v (projdir </> cfile)
 #else
@@ -294,6 +297,8 @@ main = do
 #endif
   let pd = localPkgDescr lbi
   let lvd = (lbi, v, distdir)
+
+  logm $ "\n\ngot gpd:" ++ show gpd
 
   let
       -- a =<< b $$ c   ==  (a =<< b) $$ c
@@ -849,3 +854,6 @@ renderGhcOptions' lbi _v opts = do
 -- CPP >= 1.24
   return $ renderGhcOptions (compiler lbi) (hostPlatform lbi) opts
 #endif
+
+logm :: String -> IO ()
+logm str = appendFile "/tmp/ch.log" (str ++ "\n")
