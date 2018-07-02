@@ -580,4 +580,9 @@ lookupEnv' :: String -> IO (Maybe String)
 lookupEnv' k = lookup k <$> getEnvironment
 
 exeExtension' :: FilePath
+#if MIN_VERSION_base(4,12,0)
+  -- AZ: Taking a shortcut, not sure how to get a Cabal Platform here
+exeExtension' = System.Directory.exeExtension
+#else
 exeExtension' = Distribution.Simple.BuildPaths.exeExtension
+#endif
