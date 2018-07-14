@@ -33,6 +33,8 @@
 -- (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 -- OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+{-# LANGUAGE CPP #-}
+
 {-|
 Module      : CabalHelper.Compiletime.GuessGhc
 Description : Logic for finding @ghc-pkg@ based on path to @ghc@
@@ -89,4 +91,9 @@ takeWhileEndLE p = fst . foldr go ([], False)
       | otherwise = (rest, True)
 
 exeExtension' :: FilePath
+#if MIN_VERSION_base(4,12,0)
+  -- AZ: Taking a shortcut, not sure how to get a Cabal Platform here
+exeExtension' = System.Directory.exeExtension
+#else
 exeExtension' = Distribution.Simple.BuildPaths.exeExtension
+#endif
