@@ -135,7 +135,7 @@ executable cabal-helper-wrapper
                        CabalHelper.Shared.InterfaceTypes
                        CabalHelper.Shared.Sandbox
                        Paths_cabal_helper
-  build-tool-depends:  cabal-install:cabal
+  -- build-tool-depends:  cabal-install:cabal
   build-depends:       base             < 5    && >= 4.7
   if os(windows)
     build-depends:     base                       >= 4.7

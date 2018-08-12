@@ -124,6 +124,10 @@ import Text.Printf
 import GHC.Generics
 import Prelude
 
+#if MIN_VERSION_base(4,12,0)
+import Control.Monad.Fail
+#endif
+
 import Paths_cabal_helper (getLibexecDir)
 import CabalHelper.Shared.InterfaceTypes
 import CabalHelper.Shared.Sandbox
@@ -218,7 +222,11 @@ data SomeLocalBuildInfo = SomeLocalBuildInfo {
 -- 'runQuery' to execute it.
 newtype Query m a = Query { unQuery :: StateT (Maybe SomeLocalBuildInfo)
                                          (ReaderT QueryEnv m) a }
+#if MIN_VERSION_base(4,12,0)
+    deriving (Functor, Applicative, Monad, MonadIO, MonadFail)
+#else
     deriving (Functor, Applicative, Monad, MonadIO)
+#endif
 
 instance MonadTrans Query where
     lift = Query . lift . lift
@@ -287,7 +295,11 @@ nonDefaultConfigFlags :: MonadIO m => Query m [(String, Bool)]
 compilerVersion :: MonadIO m => Query m (String, Version)
 
 -- | Package identifier, i.e. package name and version
+#if MIN_VERSION_base(4,12,0)
+packageId :: (MonadIO m, MonadFail m) => Query m (String, Version)
+#else
 packageId :: MonadIO m => Query m (String, Version)
+#endif
 
 -- | Run a ComponentQuery on all components of the package.
 components :: Monad m => ComponentQuery m (ChComponentName -> b) -> Query m [b]
@@ -378,7 +390,11 @@ invokeHelper QueryEnv {..} args = do
                  , " failed"
                  ]
 
+#if MIN_VERSION_base(4,12,0)
+getPackageId :: (MonadQuery m, MonadFail m) => m (String, Version)
+#else
 getPackageId :: MonadQuery m => m (String, Version)
+#endif
 getPackageId = ask >>= \QueryEnv {..} -> do
   [ Just (ChResponseVersion pkgName pkgVer) ] <- readHelper [ "package-id" ]
   return (pkgName, pkgVer)
