@@ -348,7 +348,7 @@ reconfigure readProc progs cabalOpts = do
                  then [ "--with-ghc-pkg=" ++ ghcPkgProgram progs ]
                  else []
             ++ cabalOpts
-    _ <- liftIO $ readProc (cabalProgram progs) ("configure":progOpts) ""
+    _ <- liftIO $ readProc (cabalProgram progs) ("new-configure":progOpts) ""
     return ()
 
 readHelper :: (MonadIO m, MonadQuery m) => [String] -> m [Maybe ChResponse]
