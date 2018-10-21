@@ -101,7 +101,10 @@ data QueryEnvI cache (proj_type :: ProjType) = QueryEnv
     -- processes. Useful if you need to, for example, redirect standard error
     -- output away from the user\'s terminal.
 
-    , qePrograms    :: Programs
+    , qePrograms     :: !Programs
+    -- ^ Field accessor for 'QueryEnv'.
+
+    , qeCompPrograms :: !CompPrograms
     -- ^ Field accessor for 'QueryEnv'.
 
     , qeProjLoc      :: !(ProjLoc proj_type)
@@ -232,15 +235,13 @@ data StackProjPaths = StackProjPaths
     { sppGlobalPkgDb :: !PackageDbDir
     , sppSnapPkgDb   :: !PackageDbDir
     , sppLocalPkgDb  :: !PackageDbDir
+    , sppCompExe     :: !FilePath
     }
 
+type Env = (?verbose :: Bool, Progs)
 type Verbose = (?verbose :: Bool)
-type Progs = (?progs :: Programs)
--- TODO: rname to `CompEnv` or something
-type Env =
-    ( ?verbose :: Bool
-    , ?progs   :: Programs
-    )
+type Progs = (?progs :: Programs, CProgs)
+type CProgs = (?cprogs :: CompPrograms)
 
 -- | Configurable paths to various programs we use.
 data Programs = Programs {
@@ -248,21 +249,25 @@ data Programs = Programs {
       cabalProgram  :: FilePath,
 
       -- | The path to the @stack@ program.
-      stackProgram  :: FilePath,
+      stackProgram  :: FilePath
+    } deriving (Eq, Ord, Show, Read, Generic, Typeable)
 
-      -- | The path to the @ghc@ program.
-      ghcProgram    :: FilePath,
+data CompPrograms = CompPrograms
+    { ghcProgram    :: FilePath
+    -- ^ The path to the @ghc@ program.
 
-      -- | The path to the @ghc-pkg@ program. If
-      -- not changed it will be derived from the path to 'ghcProgram'.
-      ghcPkgProgram :: FilePath
+    , ghcPkgProgram :: FilePath
+    -- ^ The path to the @ghc-pkg@ program. If not changed it will be derived
+    -- from the path to 'ghcProgram'.
     } deriving (Eq, Ord, Show, Read, Generic, Typeable)
 
 -- | By default all programs use their unqualified names, i.e. they will be
 -- searched for on @PATH@.
 defaultPrograms :: Programs
-defaultPrograms = Programs "cabal" "stack" "ghc" "ghc-pkg"
+defaultPrograms = Programs "cabal" "stack"
 
+defaultCompPrograms :: CompPrograms
+defaultCompPrograms = CompPrograms "ghc" "ghc-pkg"
 
 data CompileOptions = CompileOptions
     { oVerbose       :: Bool
@@ -273,12 +278,6 @@ data CompileOptions = CompileOptions
 
 oCabalProgram :: Env => FilePath
 oCabalProgram = cabalProgram ?progs
-
-oGhcProgram :: Env => FilePath
-oGhcProgram = ghcProgram ?progs
-
-oGhcPkgProgram :: Env => FilePath
-oGhcPkgProgram = ghcPkgProgram ?progs
 
 defaultCompileOptions :: CompileOptions
 defaultCompileOptions =
