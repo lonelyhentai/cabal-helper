@@ -14,10 +14,16 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{-# LANGUAGE CPP, RecordWildCards, FlexibleContexts, ConstraintKinds,
-  GeneralizedNewtypeDeriving, DeriveDataTypeable, DeriveGeneric, DeriveFunctor,
-  NamedFieldPuns, OverloadedStrings
- #-}
+{-# LANGUAGE CPP                        #-}
+{-# LANGUAGE ConstraintKinds            #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE NamedFieldPuns             #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
 
 {-|
 Module      : Distribution.Helper
@@ -57,6 +63,9 @@ module Distribution.Helper (
   , sourceDirs
   , entrypoints
   , needsBuildOutput
+
+  -- ** Other queries
+  , distDir
 
   -- * Query environment
   , QueryEnv
@@ -98,35 +107,38 @@ module Distribution.Helper (
   , module Data.Functor.Apply
   ) where
 
-import Cabal.Plan
-import Control.Applicative
-import Control.Monad
-import Control.Monad.IO.Class
-import Control.Monad.State.Strict
-import Control.Monad.Reader
-import Control.Exception as E
-import Data.Char
-import Data.List
-import Data.Maybe
-import qualified Data.Map as Map
-import Data.Version
-import Data.Typeable
-import Data.Function
-import Data.Functor.Apply
-import Distribution.System (buildOS, OS(Windows))
-import System.Environment
-import System.FilePath hiding ((<.>))
-import qualified System.FilePath as FP
-import System.Directory
-import System.Process
-import System.IO.Unsafe
-import Text.Printf
-import GHC.Generics
-import Prelude
+import           Cabal.Plan
+import           Control.Applicative
+import           Control.Exception                 as E
+import           Control.Monad
+import           Control.Monad.IO.Class
+import           Control.Monad.Reader
+import           Control.Monad.State.Strict
+import           Data.Char
+import           Data.Function
+import           Data.Functor.Apply
+import           Data.List
+import           Data.Maybe
+import           Data.Typeable
+import           Data.Version
+import           Distribution.Simple.BuildPaths    (exeExtension)
+import           Distribution.System               (OS (Windows), buildOS)
+import           GHC.Generics
+import           Paths_cabal_helper                (getLibexecDir)
+import           Prelude
+import           System.Directory
+import           System.Environment
+import           System.FilePath                   hiding ((<.>))
+import           System.IO.Unsafe
+import           System.Process
+import           Text.Printf
 
-import Paths_cabal_helper (getLibexecDir)
-import CabalHelper.Shared.InterfaceTypes
-import CabalHelper.Shared.Sandbox
+import qualified Data.Map                          as Map
+import qualified System.FilePath                   as FP
+
+import           CabalHelper.Shared.InterfaceTypes
+import           CabalHelper.Shared.Sandbox
+import           Paths_cabal_helper                (getLibexecDir)
 
 -- | Paths or names of various programs we need.
 data Programs = Programs {
@@ -195,23 +207,23 @@ mkQueryEnv projdir distdir = QueryEnv {
   }
 
 data SomeLocalBuildInfo = SomeLocalBuildInfo {
-      slbiPackageDbStack      :: [ChPkgDb],
-      slbiPackageFlags        :: [(String, Bool)],
-      slbiCompilerVersion     :: (String, Version),
+      slbiPackageDbStack        :: [ChPkgDb],
+      slbiPackageFlags          :: [(String, Bool)],
+      slbiCompilerVersion       :: (String, Version),
 
-      slbiGhcMergedPkgOptions :: [String],
+      slbiGhcMergedPkgOptions   :: [String],
 
-      slbiConfigFlags         :: [(String, Bool)],
+      slbiConfigFlags           :: [(String, Bool)],
       slbiNonDefaultConfigFlags :: [(String, Bool)],
 
-      slbiGhcSrcOptions       :: [(ChComponentName, [String])],
-      slbiGhcPkgOptions       :: [(ChComponentName, [String])],
-      slbiGhcLangOptions      :: [(ChComponentName, [String])],
-      slbiGhcOptions          :: [(ChComponentName, [String])],
+      slbiGhcSrcOptions         :: [(ChComponentName, [String])],
+      slbiGhcPkgOptions         :: [(ChComponentName, [String])],
+      slbiGhcLangOptions        :: [(ChComponentName, [String])],
+      slbiGhcOptions            :: [(ChComponentName, [String])],
 
-      slbiSourceDirs          :: [(ChComponentName, [String])],
-      slbiEntrypoints         :: [(ChComponentName, ChEntrypoint)],
-      slbiNeedsBuildOutput    :: [(ChComponentName, NeedsBuildOutput)]
+      slbiSourceDirs            :: [(ChComponentName, [String])],
+      slbiEntrypoints           :: [(ChComponentName, ChEntrypoint)],
+      slbiNeedsBuildOutput      :: [(ChComponentName, NeedsBuildOutput)]
     } deriving (Eq, Ord, Read, Show)
 
 -- | A lazy, cached, query against a package's Cabal configuration. Use
@@ -317,7 +329,10 @@ ghcPkgOptions :: MonadIO m => ComponentQuery m [String]
 -- | Only language related options, i.e. @-XSomeExtension@
 ghcLangOptions :: MonadIO m => ComponentQuery m [String]
 
-packageId             = Query $ getPackageId
+distDir :: MonadIO m => Query m String
+
+distDir               = Query   getDistDir
+packageId             = Query   getPackageId
 packageDbStack        = Query $ slbiPackageDbStack        `liftM` getSlbi
 packageFlags          = Query $ slbiPackageFlags          `liftM` getSlbi
 compilerVersion       = Query $ slbiCompilerVersion       `liftM` getSlbi
@@ -354,13 +369,14 @@ reconfigure readProc progs cabalOpts = do
 readHelper :: (MonadIO m, MonadQuery m) => [String] -> m [Maybe ChResponse]
 readHelper args = ask >>= \qe -> liftIO $ do
   out <- either error id <$> invokeHelper qe args
+  liftIO $ putStrLn $ ">>>> " ++ out
   let res = read out
   liftIO $ evaluate res `E.catch` \se@(SomeException _) -> do
       md <- lookupEnv' "CABAL_HELPER_DEBUG"
       let msg = "readHelper: exception: '" ++ show se ++ "'"
       error $ msg ++ case md of
         Nothing -> ", for more information set the environment variable CABAL_HELPER_DEBUG"
-        Just _ -> ", output: '"++ out ++"'"
+        Just _  -> ", output: '"++ out ++"'"
 
 invokeHelper :: QueryEnv -> [String] -> IO (Either String String)
 invokeHelper QueryEnv {..} args = do
@@ -382,6 +398,11 @@ getPackageId :: MonadQuery m => m (String, Version)
 getPackageId = ask >>= \QueryEnv {..} -> do
   [ Just (ChResponseVersion pkgName pkgVer) ] <- readHelper [ "package-id" ]
   return (pkgName, pkgVer)
+
+getDistDir :: MonadQuery m => m String
+getDistDir = ask >>= \QueryEnv {..} -> do
+  [ Just (ChResponseDistDir dd) ] <- readHelper [ "dist-dir" ]
+  return dd
 
 getSomeConfigState :: MonadQuery m => m SomeLocalBuildInfo
 getSomeConfigState = ask >>= \QueryEnv {..} -> do

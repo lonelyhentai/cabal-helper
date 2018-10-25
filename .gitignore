@@ -13,3 +13,7 @@ cabal.sandbox.config
 
 # Emacs lock files
 .#*
+
+/dist-newstyle
+/.ghc.environment.*
+

@@ -22,17 +22,16 @@ import Control.Monad
 import Data.Char
 import Data.List
 import Data.Maybe
+import Data.Semigroup        ((<>))
 import Data.String
-import Text.Printf
-import Text.Show.Pretty
 import System.Console.GetOpt
-import System.Environment
 import System.Directory
-import System.FilePath
-import System.Process
+import System.Environment
 import System.Exit
+import System.FilePath
 import System.IO
-import Prelude
+import System.Process
+import Text.Printf
 
 import qualified Data.Text as Text
 import qualified Data.Map.Strict as Map
@@ -51,6 +50,8 @@ import CabalHelper.Compiletime.Compile
 import CabalHelper.Compiletime.Types
 import CabalHelper.Shared.Common
 import CabalHelper.Shared.InterfaceTypes
+import Distribution.Simple.LocalBuildInfo     ()
+import Paths_cabal_helper                     (version)
 
 usage :: IO ()
 usage = do
@@ -155,6 +156,15 @@ main = handlePanic $ do
     "print-appdatadir":[] -> putStrLn =<< appCacheDir
     "print-appcachedir":[] -> putStrLn =<< appCacheDir
     "print-build-platform":[] -> putStrLn $ display buildPlatform
+    projdir:_distdir:"dist-dir":[] -> do
+      let bp = display buildPlatform
+      ghcVersion <- reverse . takeWhile (/= ' ') . reverse . takeWhile (/= '\n') <$> readProcess "ghc" ["--version"] ""
+      [cfile] <- filter isCabalFile <$> getDirectoryContents projdir
+      gpd <- readPackageDescription silent (projdir </> cfile)
+      let pkgName     = display (packageName gpd) :: String
+      let pkgVersion  = display (toDataVersion (packageVersion gpd)) :: String
+
+      putStr $ "dist-newstyle/build" </> bp </> ("ghc-" <> ghcVersion) </> pkgName <> "-" <> pkgVersion
 
     "oldstyle":projdir:_distdir:"package-id":[] -> do
       let v | oVerbose opts = deafening

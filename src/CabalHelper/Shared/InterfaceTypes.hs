@@ -13,7 +13,9 @@
 -- You should have received a copy of the GNU Affero General Public License
 -- along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-{-# LANGUAGE DeriveGeneric, DeriveDataTypeable, DefaultSignatures #-}
+{-# LANGUAGE DefaultSignatures  #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric      #-}
 
 {-|
 Module      : CabalHelper.Shared.InterfaceTypes
@@ -31,8 +33,8 @@ talking to an old executable.
 -}
 module CabalHelper.Shared.InterfaceTypes where
 
-import GHC.Generics
 import Data.Version
+import GHC.Generics
 
 data ChResponse
     = ChResponseCompList    [(ChComponentName, [String])]
@@ -44,6 +46,7 @@ data ChResponse
     | ChResponseVersion     String Version
     | ChResponseLicenses    [(String, [(String, Version)])]
     | ChResponseFlags       [(String, Bool)]
+    | ChResponseDistDir     String
   deriving (Eq, Ord, Read, Show, Generic)
 
 data ChComponentName = ChSetupHsName
@@ -67,8 +70,8 @@ data ChEntrypoint = ChSetupEntrypoint -- ^ Almost like 'ChExeEntrypoint' but
                                     , chOtherModules   :: [ChModuleName]
                                     , chSignatures     :: [ChModuleName] -- backpack only
                                     }
-                  | ChExeEntrypoint { chMainIs         :: FilePath
-                                    , chOtherModules   :: [ChModuleName]
+                  | ChExeEntrypoint { chMainIs       :: FilePath
+                                    , chOtherModules :: [ChModuleName]
                                     } deriving (Eq, Ord, Read, Show, Generic)
 
 data ChPkgDb = ChPkgGlobal
