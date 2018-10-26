@@ -32,6 +32,7 @@ import System.FilePath
 import System.IO
 import System.Process
 import Text.Printf
+import Text.Show.Pretty
 
 import qualified Data.Text as Text
 import qualified Data.Map.Strict as Map
@@ -156,17 +157,19 @@ main = handlePanic $ do
     "print-appdatadir":[] -> putStrLn =<< appCacheDir
     "print-appcachedir":[] -> putStrLn =<< appCacheDir
     "print-build-platform":[] -> putStrLn $ display buildPlatform
-    projdir:_distdir:"dist-dir":[] -> do
+    "v1-style":projdir:_distdir:"dist-dir":[] -> do
       let bp = display buildPlatform
       ghcVersion <- reverse . takeWhile (/= ' ') . reverse . takeWhile (/= '\n') <$> readProcess "ghc" ["--version"] ""
       [cfile] <- filter isCabalFile <$> getDirectoryContents projdir
       gpd <- readPackageDescription silent (projdir </> cfile)
       let pkgName     = display (packageName gpd) :: String
       let pkgVersion  = display (toDataVersion (packageVersion gpd)) :: String
+      let path = "dist-newstyle/build" </> bp </> ("ghc-" <> ghcVersion) </> pkgName <> "-" <> pkgVersion
+      let distDirPath = ChResponseDistDir path
 
-      putStr $ "dist-newstyle/build" </> bp </> ("ghc-" <> ghcVersion) </> pkgName <> "-" <> pkgVersion
+      putStr . show $ [Just distDirPath]
 
-    "oldstyle":projdir:_distdir:"package-id":[] -> do
+    "v1-style":projdir:_distdir:"package-id":[] -> do
       let v | oVerbose opts = deafening
             | otherwise    = silent
       -- ghc-mod will catch multiple cabal files existing before we get here

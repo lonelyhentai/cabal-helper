@@ -369,7 +369,6 @@ reconfigure readProc progs cabalOpts = do
 readHelper :: (MonadIO m, MonadQuery m) => [String] -> m [Maybe ChResponse]
 readHelper args = ask >>= \qe -> liftIO $ do
   out <- either error id <$> invokeHelper qe args
-  liftIO $ putStrLn $ ">>>> " ++ out
   let res = read out
   liftIO $ evaluate res `E.catch` \se@(SomeException _) -> do
       md <- lookupEnv' "CABAL_HELPER_DEBUG"
