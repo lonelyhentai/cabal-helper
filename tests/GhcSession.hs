@@ -59,8 +59,8 @@ data CabalCommands pt =
     { cabalDistDir          :: FilePath -> DistDir pt
     , cabalProjDir          :: FilePath -> ProjLoc pt
     , cabalAddProject       :: FilePath -> IO ()
-    , cabalConfigureCommand :: String
-    , cabalBuildCommand     :: String
+    , cabalConfigureCommand :: [String]
+    , cabalBuildCommand     :: [String]
     , cabalSdistCommand     :: String
     }
 
@@ -69,8 +69,8 @@ oldBuild = CabalCommands
     { cabalDistDir          = \d -> DistDirV1 (d </> "dist")
     , cabalProjDir          = \cf -> ProjLocCabalFile cf
     , cabalAddProject       = \_ -> return ()
-    , cabalConfigureCommand = "configure"
-    , cabalBuildCommand     = "build"
+    , cabalConfigureCommand = ["configure"]
+    , cabalBuildCommand     = ["build"]
     , cabalSdistCommand     = "sdist"
     }
 
@@ -79,8 +79,10 @@ newBuild = CabalCommands
     { cabalDistDir          = \d -> DistDirV2 (d </> "dist-newstyle")
     , cabalProjDir          = \cf -> ProjLocV2Dir (takeDirectory cf)
     , cabalAddProject       = addCabalProject
-    , cabalConfigureCommand = "new-configure"
-    , cabalBuildCommand     = "new-build"
+    -- , cabalConfigureCommand = "new-configure"
+    -- , cabalConfigureCommand = ["new-build", "--configure-only"]
+    , cabalConfigureCommand = ["new-build", "--enable-benchmarks", "--enable-tests"]
+    , cabalBuildCommand     = ["new-build"]
     , cabalSdistCommand     = "sdist"
     }
 
@@ -124,7 +126,7 @@ runTest c topdir projdir cabal_file act = do
 
     setCurrentDirectory dir
     cabalAddProject c $ dir
-    run "cabal" [ cabalConfigureCommand c ]
+    run "cabal" ( cabalConfigureCommand c )
 
     act c $ dir </> takeFileName cabal_file
 
@@ -145,7 +147,7 @@ test c cabal_file = do
         putStrLn $ "\n" ++ show ciComponentName ++ ":::: " ++ show ciNeedsBuildOutput
 
         when (ciNeedsBuildOutput == ProduceBuildOutput) $ do
-          run "cabal" [ cabalBuildCommand c ]
+          run "cabal" ( cabalBuildCommand c )
 
         let opts' = "-Werror" : ciGhcOptions
 
