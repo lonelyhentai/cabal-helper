@@ -395,13 +395,17 @@ invokeHelper QueryEnv {..} args = do
 
 getPackageId :: MonadQuery m => m (String, Version)
 getPackageId = ask >>= \QueryEnv {..} -> do
-  [ Just (ChResponseVersion pkgName pkgVer) ] <- readHelper [ "package-id" ]
-  return (pkgName, pkgVer)
+  mversion <-  readHelper [ "package-id" ]
+  case mversion of
+    [ Just (ChResponseVersion pkgName pkgVer) ] -> return (pkgName, pkgVer)
+    _ -> error $ "getPackageId: expected version, got" ++ show mversion
 
 getDistDir :: MonadQuery m => m String
 getDistDir = ask >>= \QueryEnv {..} -> do
-  [ Just (ChResponseDistDir dd) ] <- readHelper [ "dist-dir" ]
-  return dd
+  mdir <- readHelper [ "dist-dir" ]
+  case mdir of
+    [ Just (ChResponseDistDir dd) ] -> return dd
+    _ -> error $ "getDistDir: expected dir, got" ++ show mdir
 
 getSomeConfigState :: MonadQuery m => m SomeLocalBuildInfo
 getSomeConfigState = ask >>= \QueryEnv {..} -> do
