@@ -665,18 +665,13 @@ listCabalVersions opts = listCabalVersions' opts Nothing
 
 listCabalVersions' :: Options -> Maybe PackageDbDir -> MaybeT IO [Version]
 listCabalVersions' opts@Options {..} mdb = do
-  case mdb of
-    Nothing -> mzero
-    Just (PackageDbDir db_path) -> do
-      exists <- liftIO $ doesDirectoryExist db_path
-      case exists of
-        False -> mzero
-        True  -> MaybeT $ logIOError opts "listCabalVersions'" $ Just <$> do
-          let mdbopt = ("--package-conf="++) <$> unPackageDbDir <$> mdb
-              args = ["list", "--simple-output", "Cabal"] ++ maybeToList mdbopt
+  MaybeT $ logIOError opts "listCabalVersions'" $ Just <$> do
+    let mdbopt = ("--package-conf="++) <$> unPackageDbDir <$> mdb
+        args = ["list", "--simple-output", "Cabal"] ++ maybeToList mdbopt
 
-          catMaybes . map (fmap snd . parsePkgId . fromString) . words
-                   <$> readProcess' opts oGhcPkgProgram args ""
+    catMaybes . map (fmap snd . parsePkgId . fromString) . words
+             <$> readProcess' opts oGhcPkgProgram args ""
+
 
 cabalVersionExistsInPkgDb :: Options -> Version -> PackageDbDir -> IO Bool
 cabalVersionExistsInPkgDb opts cabalVer db@(PackageDbDir db_path) = do
