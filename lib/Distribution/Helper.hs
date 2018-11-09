@@ -124,7 +124,6 @@ import           Data.Version
 import           Distribution.Simple.BuildPaths    (exeExtension)
 import           Distribution.System               (OS (Windows), buildOS)
 import           GHC.Generics
-import           Paths_cabal_helper                (getLibexecDir)
 import           Prelude
 import           System.Directory
 import           System.Environment
@@ -138,7 +137,7 @@ import qualified System.FilePath                   as FP
 
 import           CabalHelper.Shared.InterfaceTypes
 import           CabalHelper.Shared.Sandbox
-import           Paths_cabal_helper                (getLibexecDir)
+import           Paths_cabal_helper                (getLibexecDir,getBinDir)
 
 -- | Paths or names of various programs we need.
 data Programs = Programs {
@@ -502,11 +501,26 @@ findLibexecExe = do
          mdir <- tryFindCabalHelperTreeDistDir
          dir <- case mdir of
            Nothing ->
-               throwIO $ LibexecNotFoundError exeName libexecdir
+               -- throwIO $ LibexecNotFoundError exeName libexecdir
+               return "junk"
            Just dir ->
                return dir
-
-         return $ dir </> "build" </> exeName </> exeName
+         let exe' = dir </> "build" </> exeName </> exeName
+         exists' <- doesFileExist exe'
+         if exists'
+           then return exe'
+           else do
+             -- NOTE: For a stack install, the $libexec will be found.
+             --       For cabal new-install the binDir points to the
+             --       specific location in the store, according to the
+             --       hash of the installed cabal-helper, so is
+             --       guaranteed to be the correct version.
+             binDir <- getBinDir
+             let exe'' = binDir </> exeName
+             exists'' <- doesFileExist exe''
+             if exists''
+               then return exe''
+               else throwIO $ LibexecNotFoundError exeName (intercalate "\n" [libexecdir,exe,exe',exe'']) 
 
 findPlanJson :: FilePath -> IO (Maybe FilePath)
 findPlanJson base =
