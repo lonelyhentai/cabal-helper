@@ -30,8 +30,8 @@ license-files:       LICENSE
 author:              Daniel Gröber <dxld@darkboxed.org>
 maintainer:          dxld@darkboxed.org
 category:            Distribution
-build-type:          Simple
-cabal-version:       >= 1.6
+build-type:          Custom
+cabal-version:       >= 2.0
 extra-source-files:  README.md
                      src/CabalHelper/Runtime/*.hs
 
@@ -67,6 +67,10 @@ flag dev
   default:     False
   manual:      True
 
+custom-setup
+  setup-depends:
+    base  >= 4.5 && < 4.13,
+    Cabal >= 1.14 && < 2.5
 
 -- [Note test dependencies] Vaious tests need access to modules used in other
 -- components, unfortunately we can't use Cabal 2.0's new internal libraries for
@@ -84,8 +88,8 @@ flag dev
 -- FIXME: We can use Cabal 2.0 features now, yey!
 
 library
-  -- default-language:    Haskell2010
-  -- default-extensions:  NondecreasingIndentation
+  default-language:    Haskell2010
+  default-extensions:  NondecreasingIndentation
   hs-source-dirs:      lib, src
   exposed-modules:     Distribution.Helper
   other-modules:
@@ -120,9 +124,9 @@ executable cabal-helper-wrapper
   -- x-scope:               private
 
   -- Common c-h-wrapper-fields -- See [Note test dependencies]
-  -- default-language:    Haskell2010
-  -- default-extensions:  NondecreasingIndentation
-  -- other-extensions:    TemplateHaskell
+  default-language:    Haskell2010
+  default-extensions:  NondecreasingIndentation
+  other-extensions:    TemplateHaskell
   hs-source-dirs:      src
   other-modules:
                        CabalHelper.Compiletime.Compat.Environment
@@ -168,9 +172,9 @@ test-suite compile-test
   build-tools:         cabal
 
   -- Instantiate common c-h-wrapper-fields -- See [Note test dependencies]
-  -- default-language:    Haskell2010
-  -- default-extensions:  NondecreasingIndentation
-  -- other-extensions:    TemplateHaskell
+  default-language:    Haskell2010
+  default-extensions:  NondecreasingIndentation
+  other-extensions:    TemplateHaskell
   hs-source-dirs:      src
   other-modules:
                        CabalHelper.Compiletime.Compat.Environment
@@ -219,9 +223,9 @@ test-suite ghc-session
                      , cabal-helper
 
   -- Instantiate common c-h-wrapper-fields -- See [Note test dependencies]
-  -- default-language:    Haskell2010
-  -- default-extensions:  NondecreasingIndentation
-  -- other-extensions:    TemplateHaskell
+  default-language:    Haskell2010
+  default-extensions:  NondecreasingIndentation
+  other-extensions:    TemplateHaskell
   hs-source-dirs:      src
   other-modules:
                        CabalHelper.Compiletime.Compat.Environment
@@ -260,8 +264,8 @@ test-suite ghc-session
 
 
 executable cabal-helper-main
-  -- default-language:    Haskell2010
-  -- default-extensions:  NondecreasingIndentation
+  default-language:    Haskell2010
+  default-extensions:  NondecreasingIndentation
   main-is:             CabalHelper/Runtime/Main.hs
   hs-source-dirs:      src
   other-modules:
