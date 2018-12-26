@@ -74,6 +74,7 @@ module Distribution.Helper (
   -- * Result types
   , ChComponentInfo(..)
   , ChComponentName(..)
+  , ChLibraryName(..)
   , ChModuleName(..)
   , ChPkgDb(..)
   , ChEntrypoint(..)
@@ -91,8 +92,10 @@ module Distribution.Helper (
 
   -- * Reexports
   , module Data.Functor.Apply
+  , module CabalHelper.Compiletime.Process
   ) where
 
+import CabalHelper.Compiletime.Process
 import Cabal.Plan hiding (Unit, UnitId, uDistDir)
 import Control.Applicative
 import Control.Monad
@@ -209,7 +212,7 @@ projConf (ProjLocV2Dir projdir_path) =
     }
 projConf (ProjLocStackDir projdir_path) =
   ProjConfStack
-    { pcStackYaml = projdir_path </> "stack.yml" }
+    { pcStackYaml = projdir_path </> "stack.yaml" }
 
 getProjConfModTime :: ProjConf pt -> IO ProjConfModTimes
 getProjConfModTime ProjConfV1{pcV1CabalFile} =

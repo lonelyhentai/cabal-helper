@@ -1,2 +1,3 @@
-packages: . cabal-plan/
-allow-newer: cabal-plan:base cabal-plan:containers
+packages: .
+          -- cabal-plan/
+-- allow-newer: cabal-plan:base cabal-plan:containers
