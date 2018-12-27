@@ -46,6 +46,7 @@ data ProjType
     = V1    -- ^ @cabal v1-build@ project, see 'DistDirV1'
     | V2    -- ^ @cabal v2-build@ project, see 'DistDirV2'
     | Stack -- ^ @stack@ project.
+    deriving Typeable
 
 -- | The location of a project. The kind of location marker given determines the
 -- 'ProjType'. The project type of a given directory can be determined by trying

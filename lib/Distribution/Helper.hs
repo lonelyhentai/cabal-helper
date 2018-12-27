@@ -280,13 +280,16 @@ allUnits f = fmap f <$> (mapM unitInfo =<< projectUnits)
 
 getProjInfo :: QueryEnv pt -> IO (ProjInfo pt)
 getProjInfo qe@QueryEnv{..} = do
+  putStrLn $ "Helper.getProjInfo entered" -- AZ
   cache@QueryCache{qcProjInfo, qcUnitInfos} <- readIORef qeCacheRef
   proj_info <- checkUpdateProjInfo qe qcProjInfo
   let active_units = NonEmpty.toList $ piUnits proj_info
+  putStrLn $ "Helper.getProjInfo acive_units:" ++ show (map uDistDir active_units) -- AZ
   writeIORef qeCacheRef $ cache
     { qcProjInfo  = Just proj_info
     , qcUnitInfos = discardInactiveUnitInfos active_units qcUnitInfos
     }
+  putStrLn $ "Helper.getProjInfo qcUnitInfos:" ++ show (Map.keys $ discardInactiveUnitInfos active_units qcUnitInfos) -- AZ
   return proj_info
 
 checkUpdateProjInfo
@@ -310,9 +313,13 @@ checkUpdateProjInfo qe mproj_info = do
 
 getUnitInfo :: QueryEnv pt -> Unit pt -> IO UnitInfo
 getUnitInfo qe@QueryEnv{..} unit@Unit{uDistDir} = do
+  -- putStrLn $ "getUnitInfo:uDistDir=" ++ show uDistDir
   proj_info <- getProjInfo qe
   cache@QueryCache{qcUnitInfos} <- readIORef qeCacheRef
   let munit_info = Map.lookup uDistDir qcUnitInfos
+  -- case munit_info of
+  --   Just _ -> putStrLn $ "getUnitInfo:munit_info isJust"  -- AZ
+  --   Nothing -> putStrLn $ "getUnitInfo:munit_info isNothing" -- AZ
   unit_info <- checkUpdateUnitInfo qe proj_info unit munit_info
   writeIORef qeCacheRef $ cache
     { qcUnitInfos = Map.insert uDistDir unit_info qcUnitInfos }
@@ -325,17 +332,23 @@ checkUpdateUnitInfo
     -> Maybe UnitInfo
     -> IO UnitInfo
 checkUpdateUnitInfo qe proj_info unit munit_info = do
+  -- putStrLn $ "checkUpdateUnitInfo" -- AZ
   unit_mtimes <- getUnitModTimes unit
   case munit_info of
-    Nothing -> reconf
+    Nothing -> do
+      -- putStrLn $ "checkUpdateUnitInfo Nothing->reconf" -- AZ
+      reconf
     Just unit_info
       | uiModTimes unit_info /= unit_mtimes
-        -> reconf
+        -> do
+          -- putStrLn $ "checkUpdateUnitInfo Just->reconf:(uiModTimes unit_info, unit_mtimes)=" ++ show (uiModTimes unit_info, unit_mtimes) -- AZ
+          reconf
       | otherwise
         -> return unit_info
   where
     reconf = do
-      reconfigureUnit qe unit
+      -- putStrLn $ "checkUpdateUnitInfo reconf" -- AZ
+      -- reconfigureUnit qe unit
       helper <- getHelperExe proj_info qe
       readUnitInfo qe helper unit
 
@@ -375,6 +388,7 @@ reconfigureUnit :: QueryEnvI c pt -> Unit pt -> IO ()
 reconfigureUnit QueryEnv{qeDistDir=DistDirV1{}, ..} Unit{uPackageDir=_} = do
   return ()
 reconfigureUnit QueryEnv{qeDistDir=DistDirV2{}, ..} Unit{uPackageDir, uImpl} = do
+  putStrLn $ "Helper.reconfigureUnit:(uPackageDir,uiV2Components uImpl)=" ++ show (uPackageDir,uiV2Components uImpl) -- AZ
   _ <- liftIO $ qeReadProcess (Just uPackageDir) (cabalProgram qePrograms)
         (["new-build"] ++ uiV2Components uImpl) ""
   return ()
