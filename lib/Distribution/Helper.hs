@@ -280,16 +280,16 @@ allUnits f = fmap f <$> (mapM unitInfo =<< projectUnits)
 
 getProjInfo :: QueryEnv pt -> IO (ProjInfo pt)
 getProjInfo qe@QueryEnv{..} = do
-  putStrLn $ "Helper.getProjInfo entered" -- AZ
+  -- putStrLn $ "Helper.getProjInfo entered" -- AZ
   cache@QueryCache{qcProjInfo, qcUnitInfos} <- readIORef qeCacheRef
   proj_info <- checkUpdateProjInfo qe qcProjInfo
   let active_units = NonEmpty.toList $ piUnits proj_info
-  putStrLn $ "Helper.getProjInfo acive_units:" ++ show (map uDistDir active_units) -- AZ
+  -- putStrLn $ "Helper.getProjInfo acive_units:" ++ show (map uDistDir active_units) -- AZ
   writeIORef qeCacheRef $ cache
     { qcProjInfo  = Just proj_info
     , qcUnitInfos = discardInactiveUnitInfos active_units qcUnitInfos
     }
-  putStrLn $ "Helper.getProjInfo qcUnitInfos:" ++ show (Map.keys $ discardInactiveUnitInfos active_units qcUnitInfos) -- AZ
+  -- putStrLn $ "Helper.getProjInfo qcUnitInfos:" ++ show (Map.keys $ discardInactiveUnitInfos active_units qcUnitInfos) -- AZ
   return proj_info
 
 checkUpdateProjInfo
@@ -388,7 +388,7 @@ reconfigureUnit :: QueryEnvI c pt -> Unit pt -> IO ()
 reconfigureUnit QueryEnv{qeDistDir=DistDirV1{}, ..} Unit{uPackageDir=_} = do
   return ()
 reconfigureUnit QueryEnv{qeDistDir=DistDirV2{}, ..} Unit{uPackageDir, uImpl} = do
-  putStrLn $ "Helper.reconfigureUnit:(uPackageDir,uiV2Components uImpl)=" ++ show (uPackageDir,uiV2Components uImpl) -- AZ
+  -- putStrLn $ "Helper.reconfigureUnit:(uPackageDir,uiV2Components uImpl)=" ++ show (uPackageDir,uiV2Components uImpl) -- AZ
   _ <- liftIO $ qeReadProcess (Just uPackageDir) (cabalProgram qePrograms)
         (["new-build"] ++ uiV2Components uImpl) ""
   return ()
