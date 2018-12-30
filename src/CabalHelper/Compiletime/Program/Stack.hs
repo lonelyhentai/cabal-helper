@@ -33,6 +33,7 @@ import Data.Function
 import System.FilePath hiding ((<.>))
 import Prelude
 
+import qualified CabalHelper.Compiletime.Cabal as Cabal
 import CabalHelper.Compiletime.Types
 import CabalHelper.Compiletime.Types.RelativePath
 
@@ -78,11 +79,28 @@ paths qe dir = do
   where
     split l = let (key, ' ' : val) = span (not . isSpace) l in (key, val)
 
-listPackageCabalFiles :: QueryEnvI c 'Stack -> IO [CabalFile]
-listPackageCabalFiles qe@QueryEnv{qeProjLoc=ProjLocStackDir projdir} = do
+listPackageCabalFiles' :: QueryEnvI c 'Stack -> IO [CabalFile]
+listPackageCabalFiles' qe@QueryEnv{qeProjLoc=ProjLocStackDir projdir} = do
+  -- NOTE:AZ: this does not work, the output of "stack ide packages" goes to stderr.
   out <- qeReadProcess qe (Just projdir) (stackProgram $ qePrograms qe)
     [ "ide", "packages", "--cabal-files" ] ""
   return $ map CabalFile $ lines out
+
+listPackageCabalFiles :: QueryEnvI c 'Stack -> IO [CabalFile]
+listPackageCabalFiles qe@QueryEnv{qeProjLoc=ProjLocStackDir projdir} = do
+  out <- qeReadProcess qe (Just projdir) (stackProgram $ qePrograms qe)
+      [ "query", "locals" ] ""
+  let packageDirs = catMaybes $ map getPath $ lines out
+  cabalFiles <- mapM Cabal.findCabalFile $ filter (/= "") $ lines $ concat packageDirs
+  return $ map CabalFile cabalFiles
+
+getPath :: String -> Maybe String
+getPath str = r
+  where
+    str' = dropWhile (==' ') str
+    r = if isPrefixOf "path: " str'
+    then Just (drop (length "path: ") str')
+    else Nothing
 
 workdirArg :: QueryEnvI c 'Stack -> [String]
 workdirArg QueryEnv{qeDistDir=DistDirStack mworkdir} =

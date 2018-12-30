@@ -348,7 +348,7 @@ checkUpdateUnitInfo qe proj_info unit munit_info = do
   where
     reconf = do
       -- putStrLn $ "checkUpdateUnitInfo reconf" -- AZ
-      -- reconfigureUnit qe unit
+      reconfigureUnit qe unit
       helper <- getHelperExe proj_info qe
       readUnitInfo qe helper unit
 
@@ -394,7 +394,7 @@ reconfigureUnit QueryEnv{qeDistDir=DistDirV2{}, ..} Unit{uPackageDir, uImpl} = d
   return ()
 reconfigureUnit QueryEnv{qeDistDir=DistDirStack{}, ..} Unit{uPackageDir} = do
   _ <- liftIO $ qeReadProcess (Just uPackageDir) (stackProgram qePrograms)
-         ["stack", "build", "--only-configure", "."] ""
+         [ "build", "--only-configure", "."] ""
   return ()
 
 getFileModTime :: FilePath -> IO (FilePath, EpochTime)
