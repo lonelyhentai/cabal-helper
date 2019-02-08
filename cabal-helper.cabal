@@ -120,7 +120,7 @@ executable cabal-helper-wrapper
   main-is:             CabalHelper/Compiletime/Wrapper.hs
   if flag(dev)
     ghc-options:         -Wall
-  -- scope:               private
+  scope:               private
   -- x-scope:               private
 
   -- Common c-h-wrapper-fields -- See [Note test dependencies]
