@@ -1,22 +1,18 @@
--- Copyright (C) 2015  Daniel Gröber <dxld ÄT darkboxed DOT org>
+-- cabal-helper: Simple interface to Cabal's configuration state
+-- Copyright (C) 2015-2018  Daniel Gröber <cabal-helper@dxld.at>
 --
--- This program is free software: you can redistribute it and/or modify
--- it under the terms of the GNU Affero General Public License as published by
--- the Free Software Foundation, either version 3 of the License, or
--- (at your option) any later version.
+-- SPDX-License-Identifier: Apache-2.0
 --
--- This program is distributed in the hope that it will be useful,
--- but WITHOUT ANY WARRANTY; without even the implied warranty of
--- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
--- GNU Affero General Public License for more details.
+-- Licensed under the Apache License, Version 2.0 (the "License");
+-- you may not use this file except in compliance with the License.
+-- You may obtain a copy of the License at
 --
--- You should have received a copy of the GNU Affero General Public License
--- along with this program.  If not, see <http://www.gnu.org/licenses/>.
+--     http://www.apache.org/licenses/LICENSE-2.0
 
 {-|
 Module      : CabalHelper.Shared.Common
 Description : Shared utility functions
-License     : AGPL-3
+License     : Apache-2.0
 -}
 
 {-# LANGUAGE CPP, DeriveDataTypeable, OverloadedStrings #-}
@@ -25,6 +21,19 @@ module CabalHelper.Shared.Common where
 #ifdef MIN_VERSION_Cabal
 #undef CH_MIN_VERSION_Cabal
 #define CH_MIN_VERSION_Cabal MIN_VERSION_Cabal
+#endif
+
+import Distribution.PackageDescription
+    ( GenericPackageDescription
+    )
+import Distribution.Verbosity
+    ( Verbosity
+    )
+
+#if CH_MIN_VERSION_Cabal(2,2,0)
+import qualified Distribution.PackageDescription.Parsec as P
+#else
+import qualified Distribution.PackageDescription.Parse as P
 #endif
 
 import Control.Applicative
@@ -38,11 +47,6 @@ import Data.Typeable
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8
-#if CH_MIN_VERSION_Cabal(2,2,0)
-import qualified Distribution.PackageDescription.Parsec as P
-#else
-import qualified Distribution.PackageDescription.Parse as P
-#endif
 import System.Environment
 import System.IO
 import qualified System.Info
@@ -52,8 +56,10 @@ import System.FilePath
 import Text.ParserCombinators.ReadP
 import Prelude
 
-data Panic = Panic String deriving (Typeable, Show)
+data Panic = Panic String deriving (Typeable)
 instance Exception Panic
+instance Show Panic where
+    show (Panic msg) = "panic! " ++ msg
 
 panic :: String -> a
 panic msg = throw $ Panic msg
@@ -70,28 +76,24 @@ errMsg str = do
   prog <- getProgName
   hPutStrLn stderr $ prog ++ ": " ++ str
 
--- | @getCabalConfigHeader "dist/setup-config"@ returns the cabal version and
--- compiler version
-getCabalConfigHeader :: FilePath -> IO (Maybe (Version, (ByteString, Version)))
-getCabalConfigHeader file = bracket (openFile file ReadMode) hClose $ \h -> do
-  parseHeader <$> BS.hGetLine h
-
-parseHeader :: ByteString -> Maybe (Version, (ByteString, Version))
-parseHeader header = case BS8.words header of
-  ["Saved", "package", "config", "for", _pkgId ,
-   "written", "by", cabalId,
-   "using", compId]
-    -> liftM2 (,) (snd <$> parsePkgId cabalId) (parsePkgId compId)
-  _ -> Nothing
-
-parsePkgId :: ByteString -> Maybe (ByteString, Version)
-parsePkgId bs =
-    case BS8.split '-' bs of
-      [pkg, vers] -> Just (pkg, parseVer $ BS8.unpack vers)
+parsePkgId :: String -> Maybe (String, Version)
+parsePkgId s =
+    case span (/='-') (reverse s) of
+      (vers, '-':pkg) -> Just (reverse pkg, parseVer (reverse vers))
       _ -> Nothing
+
+parsePkgIdBS :: ByteString -> Maybe (ByteString, Version)
+parsePkgIdBS bs =
+    case BS8.span (/='-') (BS.reverse bs) of
+      (vers, pkg') ->
+          Just ( BS.reverse $ BS.tail pkg'
+               , parseVer (BS8.unpack (BS.reverse vers)))
 
 parseVer :: String -> Version
 parseVer vers = runReadP parseVersion vers
+
+parseVerMay :: String -> Maybe Version
+parseVerMay vers = runReadPMay parseVersion vers
 
 trim :: String -> String
 trim = dropWhileEnd isSpace
@@ -103,9 +105,16 @@ sameMajorVersionAs :: Version -> Version -> Bool
 sameMajorVersionAs a b = majorVer a == majorVer b
 
 runReadP :: ReadP t -> String -> t
-runReadP p i = case filter ((=="") . snd) $ readP_to_S p i of
-                 (a,""):[] -> a
-                 _ -> error $ "Error parsing: " ++ show i
+runReadP p i =
+  case runReadPMay p i of
+    Just x -> x
+    Nothing -> error $ "Error parsing version: " ++ show i
+
+runReadPMay :: ReadP t -> String -> Maybe t
+runReadPMay p i = case filter ((=="") . snd) $ readP_to_S p i of
+                 (a,""):[] -> Just a
+                 _ -> Nothing
+
 
 appCacheDir :: IO FilePath
 appCacheDir =
@@ -123,15 +132,6 @@ appCacheDir =
     windowsCache = "Local Settings" </> "Cache"
     unixCache = ".cache"
 
-isCabalFile :: FilePath -> Bool
-isCabalFile f = takeExtension' f == ".cabal"
-
-takeExtension' :: FilePath -> String
-takeExtension' p =
-    if takeFileName p == takeExtension p
-      then "" -- just ".cabal" is not a valid cabal file
-      else takeExtension p
-
 replace :: String -> String -> String -> String
 replace n r hs' = go "" hs'
  where
@@ -142,8 +142,17 @@ replace n r hs' = go "" hs'
    go acc [] = reverse acc
 
 
-#if CH_MIN_VERSION_Cabal(2,2,0)
+readPackageDescription
+    :: Verbosity
+    -> FilePath
+    -> IO GenericPackageDescription
+#if CH_MIN_VERSION_Cabal(2,0,0)
 readPackageDescription = P.readGenericPackageDescription
 #else
 readPackageDescription = P.readPackageDescription
 #endif
+
+mightExist :: FilePath -> IO (Maybe FilePath)
+mightExist f = do
+  exists <- doesFileExist f
+  return $ if exists then (Just f) else (Nothing)

@@ -1,17 +1,13 @@
--- Copyright (C) 2015,2017  Daniel Gröber <dxld ÄT darkboxed DOT org>
+-- cabal-helper: Simple interface to Cabal's configuration state
+-- Copyright (C) 2015-2017  Daniel Gröber <cabal-helper@dxld.at>
 --
--- This program is free software: you can redistribute it and/or modify
--- it under the terms of the GNU Affero General Public License as published by
--- the Free Software Foundation, either version 3 of the License, or
--- (at your option) any later version.
+-- SPDX-License-Identifier: Apache-2.0
 --
--- This program is distributed in the hope that it will be useful,
--- but WITHOUT ANY WARRANTY; without even the implied warranty of
--- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
--- GNU Affero General Public License for more details.
+-- Licensed under the Apache License, Version 2.0 (the "License");
+-- you may not use this file except in compliance with the License.
+-- You may obtain a copy of the License at
 --
--- You should have received a copy of the GNU Affero General Public License
--- along with this program.  If not, see <http://www.gnu.org/licenses/>.
+--     http://www.apache.org/licenses/LICENSE-2.0
 
 {-# LANGUAGE TemplateHaskell, ScopedTypeVariables #-}
 {-# OPTIONS_GHC -fforce-recomp #-}
@@ -19,16 +15,20 @@
 {-|
 Module      : CabalHelper.Compiletime.Data
 Description : Embeds source code for runtime component using TH
-License     : AGPL-3
+License     : Apache-2.0
 -}
 
 module CabalHelper.Compiletime.Data where
 
 import Control.Monad
 import Control.Monad.IO.Class
+import Data.Digest.Pure.SHA
 import Data.Functor
+import Data.List
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.UTF8 as UTF8
+import qualified Data.ByteString.Lazy as LBS
+import qualified Data.ByteString.Lazy.UTF8 as LUTF8
 import Language.Haskell.TH
 import System.Directory
 import System.FilePath
@@ -70,11 +70,32 @@ createHelperSources dir = do
         BS.writeFile path $ UTF8.fromString src
         setFileTimes path modtime modtime
 
+sourceHash :: String
+sourceHash  = fst runtimeSources
 
 sourceFiles :: [(FilePath, String)]
-sourceFiles =
-  [ ("Runtime/Main.hs",     $(LitE . StringL <$> runIO (UTF8.toString <$> BS.readFile "src/CabalHelper/Runtime/Main.hs")))
-  , ("Shared/Common.hs",    $(LitE . StringL <$> runIO (UTF8.toString <$> BS.readFile "src/CabalHelper/Shared/Common.hs")))
-  , ("Shared/Sandbox.hs",   $(LitE . StringL <$> runIO (UTF8.toString <$> BS.readFile "src/CabalHelper/Shared/Sandbox.hs")))
-  , ("Shared/InterfaceTypes.hs",     $(LitE . StringL <$> runIO (UTF8.toString <$> BS.readFile "src/CabalHelper/Shared/InterfaceTypes.hs")))
-  ]
+sourceFiles = snd runtimeSources
+
+runtimeSources :: (String, [(FilePath, FilePath)])
+runtimeSources = $(
+  let files = map (\f -> (f, ("src/CabalHelper" </> f))) $ sort $
+        [ ("Runtime/Main.hs")
+        , ("Runtime/HelperMain.hs")
+        , ("Runtime/Compat.hs")
+        , ("Shared/Common.hs")
+        , ("Shared/InterfaceTypes.hs")
+        ]
+  in do
+    contents <- mapM (\lf -> runIO (LBS.readFile lf)) $ map snd files
+    let hashes = map (bytestringDigest . sha256) contents
+    let top_hash = showDigest $ sha256 $ LBS.concat hashes
+
+    thfiles <- forM (map fst files `zip` contents) $ \(f, xs) -> do
+      return $ TupE [LitE (StringL f), LitE (StringL (LUTF8.toString xs))]
+
+
+    return $ TupE [LitE (StringL top_hash), ListE thfiles]
+
+  )
+
+-- - $(LitE . StringL <$> runIO (UTF8.toString <$> BS.readFile

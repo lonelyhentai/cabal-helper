@@ -1,4 +1,15 @@
-{-# LANGUAGE ScopedTypeVariables, GADTs #-}
+{-# LANGUAGE ScopedTypeVariables, GADTs, ImplicitParams, OverloadedStrings #-}
+
+{-| This test tries to compile the Helper against every supported version of the
+  Cabal library. Since we compile the Helper at runtime, on the user's machine,
+  it is very important to make sure this will not fail to compile.
+
+  This test only covers using v2-build to install the requested Cabal library
+  version because it has the best build product caching (keeps CI times
+  down). We could also use stack since it has a global package cache but we
+  don't support that because stack always comes with the right Cabal library
+  version available for a given resolver anyways.
+-}
 
 import System.Environment (getArgs)
 import System.Directory
@@ -6,29 +17,26 @@ import System.FilePath
 import System.Process
 import System.Exit
 import System.IO
-import Control.Exception as E
+import System.IO.Temp
 import Data.List
 import Data.Maybe
 import Data.Version
 import Data.Functor
 import Data.Function
-import qualified Distribution.Compat.ReadP as Dist
 import Distribution.Version (VersionRange, withinRange)
-import Distribution.Text
 import Control.Arrow
 import Control.Monad
+import Control.Monad.Trans.Maybe
 import Prelude
 
 import CabalHelper.Compiletime.Compat.Environment
 import CabalHelper.Compiletime.Compat.Version
+import CabalHelper.Compiletime.Compat.Parsec
+import CabalHelper.Compiletime.Cabal
 import CabalHelper.Compiletime.Compile
+import CabalHelper.Compiletime.Program.GHC
 import CabalHelper.Compiletime.Types
 import CabalHelper.Shared.Common
-
-runReadP'Dist :: Dist.ReadP t t -> String -> t
-runReadP'Dist p i = case filter ((=="") . snd) $ Dist.readP_to_S p i of
-                 (a,""):[] -> a
-                 _ -> error $ "Error parsing: " ++ show i
 
 withinRange'CH :: Version -> VersionRange -> Bool
 withinRange'CH v r =
@@ -36,120 +44,120 @@ withinRange'CH v r =
 
 setupHOME :: IO ()
 setupHOME = do
+  mhome <- lookupEnv "HOME"
+  case mhome of
+    Just home -> do
+      exists <- doesDirectoryExist home
+      when (not exists) createHOME
+    Nothing -> createHOME
+
+createHOME :: IO ()
+createHOME = do
   tmp <- fromMaybe "/tmp" <$> lookupEnv "TMPDIR"
   let home = tmp </> "compile-test-home"
   _ <- rawSystem "rm" ["-r", home]
-  createDirectory    home
+  createDirectory home
   setEnv "HOME" home
 
 main :: IO ()
 main = do
+  let ?progs = defaultPrograms
+  let ?opts = defaultCompileOptions { oVerbose = True }
+  let ?verbose = \level -> case level of 1 -> True; _ -> False
+
   args <- getArgs
   case args of
     "list-versions":[] -> do
-        mapM_ print =<< (allCabalVersions <$> ghcVersion defaultOptions)
+        mapM_ print =<< relevantCabalVersions =<< ghcVersion
     "list-versions":ghc_ver_str:[] ->
-        mapM_ print $ allCabalVersions (parseVer ghc_ver_str)
+        mapM_ print =<< relevantCabalVersions (GhcVersion (parseVer ghc_ver_str))
     _ ->
         test args
 
+test :: Env => [String] -> IO ()
 test args = do
   let action
-       | null args = testAllCabalVersions
+       | null args = testRelevantCabalVersions
        | otherwise = testCabalVersions $ map parseVer' args
 
   setupHOME
 
-  _ <- rawSystem "cabal" ["update"]
-
   action
 
-parseVer' :: String -> Either HEAD Version
-parseVer' "HEAD" = Left HEAD
-parseVer' v      = Right $ parseVer v
+parseVer' :: String -> CabalVersion
+parseVer' "HEAD" = CabalHEAD ()
+parseVer' v      = CabalVersion $ parseVer v
 
-allCabalVersions :: Version -> [Version]
-allCabalVersions ghc_ver = let
-    cabal_versions :: [Version]
-    cabal_versions = map parseVer
-         -- "1.14.0" -- not supported at runtime
-         [ "1.16.0"
-         , "1.16.0.1"
-         , "1.16.0.2"
-         , "1.16.0.3"
-         , "1.18.0"
-         , "1.18.1"
-         , "1.18.1.1"
-         , "1.18.1.2"
-         , "1.18.1.3"
-         , "1.18.1.4"
-         , "1.18.1.5"
-         , "1.18.1.6"
-         , "1.18.1.7"
-         , "1.20.0.0"
-         , "1.20.0.1"
-         , "1.20.0.2"
-         , "1.20.0.3"
-         , "1.20.0.4"
-         , "1.22.0.0"
-         , "1.22.1.0"
-         , "1.22.1.1"
-         , "1.22.2.0"
-         , "1.22.3.0"
-         , "1.22.4.0"
-         , "1.22.5.0"
-         , "1.22.6.0"
-         , "1.22.7.0"
-         , "1.22.8.0"
-         , "1.24.0.0"
-         , "1.24.1.0"
-         , "1.24.2.0"
-         , "2.0.0.2"
-         , "2.0.1.0"
-         , "2.0.1.1"
-         , "2.2.0.0"
-         , "2.2.0.1"
-         ]
+relevantCabalVersions :: GhcVersion -> IO [Version]
+relevantCabalVersions g = map snd . filter fst <$> allCabalVersions g
 
+allCabalVersions :: GhcVersion -> IO [(Bool,Version)]
+allCabalVersions (GhcVersion ghc_ver) = do
+  cabal_versions
+      <- map parseVer . lines <$> readFile "tests/cabal-versions"
+  let
     constraint :: VersionRange
-    constraint =
-        fromMaybe (snd $ last constraint_table) $
+    Just constraint =
         fmap snd $
         find (and . (zipWith (==) `on` versionBranch) ghc_ver . fst) $
         constraint_table
 
+    constraint_table :: [(Version, VersionRange)]
     constraint_table =
-        map (parseVer *** runReadP'Dist parse) $
-            [ ("7.4"  , ">= 1.14    && < 2")
-            , ("7.6"  , ">= 1.16    && < 2")
-            , ("7.8"  , ">= 1.18    && < 2")
-            , ("7.10" , ">= 1.22.2  && < 2")
+        map (parseVer *** (absorbParsecFailure "constraint_table" . eitherParsec)) $
+            -- , ("7.8"  , ">= 1.18    && < 2")
+            [ ("7.10" , ">= 1.22.2  && < 2")
             , ("8.0.1", ">= 1.24          ")
             , ("8.0.2", ">= 1.24.2        ")
-            , ("8.2.1", ">= 2.0.0.2       ")
-            , ("8.2.2", ">= 2.0.0.2       ")
-            , ("8.4.1", ">= 2.0.0.2       ")
-            , ("8.4.2", ">= 2.2.0.1       ")
+            , ("8.2",   ">= 1.24.2.0      ")
+            , ("8.4",   ">= 2.0.0.2       ")
+            , ("8.6",   ">= 2.0.0.2       ")
             ]
-  in
-    reverse $ filter (flip withinRange'CH constraint) cabal_versions
+  return $ reverse $ map (flip withinRange'CH constraint &&& id) cabal_versions
 
 
-testAllCabalVersions :: IO ()
-testAllCabalVersions = do
-  ghc_ver <- ghcVersion defaultOptions
-  let relevant_cabal_versions = allCabalVersions ghc_ver
-  testCabalVersions $ map Right relevant_cabal_versions ++ [Left HEAD]
+testRelevantCabalVersions :: Env => IO ()
+testRelevantCabalVersions = do
+  ghc_ver <- ghcVersion
+  relevant_cabal_versions <- relevantCabalVersions ghc_ver
+  testCabalVersions $ map CabalVersion relevant_cabal_versions ++ [CabalHEAD ()]
 
-testCabalVersions :: [Either HEAD Version] -> IO ()
+testCabalVersions :: Env => [CabalVersion] -> IO ()
 testCabalVersions versions = do
-  rvs <- forM versions $ \ver -> do
-           let sver = either show showVersion ver
-           hPutStrLn stderr $ "\n\n\n\n\n\n====== Compiling with Cabal-" ++ sver
-           compilePrivatePkgDb ver
+--  ghcVer <- ghcVersion
+  rvs <- forM versions $ \cv -> do
+    withSystemTempDirectory "cabal-helper.proj-local-tmp" $ \tmpdir -> do
+
+    let sver = showCabalVersion cv
+    hPutStrLn stderr $ "\n\n\n\n\n\n====== Compiling with Cabal-" ++ sver
+
+    let che0 = \icv db -> CompHelperEnv
+          { cheCabalVer = icv
+          , chePkgDb = db
+          , cheProjDir = tmpdir
+          , chePlanJson = Nothing
+          , cheDistV2 = Just $ tmpdir </> "dist-newstyle"
+          , cheProjLocalCacheDir =
+              tmpdir </> "dist-newstyle" </> "cache"
+          }
+
+    che <- case cv of
+      CabalHEAD () -> do
+        rcv <- resolveCabalVersion cv
+        db <- getPrivateCabalPkgDb rcv
+        mcabalVersions <- runMaybeT $ listCabalVersions (Just db)
+        case mcabalVersions of
+          Just [hdver] ->
+            return $ che0 (CabalVersion hdver) (Just db)
+          _ ->
+            return $ che0 (CabalHEAD ()) Nothing
+      (CabalVersion ver) ->
+        return $ che0 (CabalVersion ver) Nothing
+
+    compileHelper che
 
   let printStatus (cv, rv) = putStrLn $ "- Cabal "++ver++" "++status
-        where  ver = case cv of Left _ -> "HEAD"; Right v -> showVersion v
+        where  ver = showCabalVersion cv
                status = case rv of
                          Right _ ->
                              "succeeded"
@@ -159,37 +167,10 @@ testCabalVersions versions = do
   let drvs = versions `zip` rvs
 
   mapM_ printStatus drvs
-  if any isLeft' $ map snd $ filter ((/=Left HEAD) . fst) drvs
+  if any isLeft' $ map snd $ filter ((/=(CabalHEAD ())) . fst) drvs
      then exitFailure
      else exitSuccess
 
  where
    isLeft' (Left _) = True
    isLeft' (Right _) = False
-
-compilePrivatePkgDb :: Either HEAD Version -> IO (Either ExitCode FilePath)
-compilePrivatePkgDb eCabalVer = do
-    res <- E.try $ installCabal defaultOptions { oVerbose = True } eCabalVer
-    case res of
-      Right (db, cabalVer) ->
-          compileWithPkg db cabalVer
-      Left (ioe :: IOException) -> do
-          print ioe
-          return $ Left (ExitFailure 1)
-
-compileWithPkg :: PackageDbDir
-               -> CabalVersion
-               -> IO (Either ExitCode FilePath)
-compileWithPkg db cabalVer = do
-    appdir <- appCacheDir
-    let comp =
-          CompileWithCabalPackage (Just db) cabalVer [cabalPkgId cabalVer] CPSGlobal
-    compile
-      comp
-      (compPaths appdir (error "compile-test: distdir not available") comp)
-      defaultOptions { oVerbose = True }
-
-
-cabalPkgId :: CabalVersion -> String
-cabalPkgId (CabalHEAD _commitid) = "Cabal"
-cabalPkgId (CabalVersion v) = "Cabal-" ++ showVersion v
