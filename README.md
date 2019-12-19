@@ -1,5 +1,6 @@
 # The `cabal-helper` library
-[![build status](https://gitlab.com/dxld/cabal-helper/badges/master/build.svg)](https://gitlab.com/dxld/cabal-helper/commits/master)
+
+**This is a fork to fix loading hanging in using `vscode-hie-server` and `haskell-ide-engine`.**
 
 The purpose of the `cabal-helper` library is to give Haskell development tools
 access to the same environment which build tools such as
